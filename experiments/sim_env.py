@@ -52,7 +52,7 @@ def make_sim_env(task_name):
         task = TransferTorusTask(random=False)
         env = control.Environment(physics, task, time_limit=20, control_timestep=DT,
                                   n_sub_steps=None, flat_observation=False)
-    elif task_name in {'mix_cube'}:
+    elif task_name in {'mix_cube', 'mix_cube_400', 'mix_cube_combined'}:
         xml_path = os.path.join(XML_DIR, f'{task_name}/bimanual_viperx_transfer_cube.xml')
         physics = mujoco.Physics.from_xml_path(xml_path)
         task = TransferMixCube(random=False)

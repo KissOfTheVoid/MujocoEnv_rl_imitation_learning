@@ -1,7 +1,7 @@
 import pathlib
 
 ### Task parameters
-DATA_DIR = '/Users/is/VSCode/bachelors_diploma_v3/experiments/raw_data'
+DATA_DIR = '/home/iskopyl/bachelors_diploma/experiments/raw_data'
 
 SIM_TASK_CONFIGS = {
     'sim_transfer_cube_scripted':{
@@ -52,6 +52,21 @@ SIM_TASK_CONFIGS = {
         'episode_len': 200,
         'camera_names': ['top']
     },
+
+    'mix_cube_400':{
+        'dataset_dir': DATA_DIR + '/mix_cube_400/',
+        'num_episodes': 400,
+        'episode_len': 200,
+        'camera_names': ['top']
+    },
+
+    'mix_cube_combined':{
+        'dataset_dir': DATA_DIR + '/mix_cube_combined/',
+        'num_episodes': 802,
+        'episode_len': 200,
+        'camera_names': ['top']
+    },
+
 
 }
 

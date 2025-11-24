@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 import os
+from torch.utils.tensorboard import SummaryWriter
+from torch.cuda.amp import GradScaler, autocast
 import pickle
 import argparse
 import matplotlib.pyplot as plt
@@ -17,6 +19,8 @@ from policy import ACTPolicy
 from visualize_episodes import save_videos
 
 from sim_env import BOX_POSE
+
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 import IPython
 e = IPython.embed
@@ -144,7 +148,7 @@ def get_image(ts, camera_names):
         curr_image = rearrange(ts.observation['images'][cam_name], 'h w c -> c h w')
         curr_images.append(curr_image)
     curr_image = np.stack(curr_images, axis=0)
-    curr_image = torch.from_numpy(curr_image / 255.0).float().to(torch.device("mps")).unsqueeze(0)
+    curr_image = torch.from_numpy(curr_image / 255.0).float().to(DEVICE).unsqueeze(0)
     return curr_image
 
 
@@ -172,7 +176,7 @@ def eval_bc(config, ckpt_name, save_episode=True):
 
     
     print(loading_status)
-    policy.to(torch.device("mps"))
+    policy.to(DEVICE)
     policy.eval()
     print(f'Loaded: {ckpt_path}')
     stats_path = os.path.join(ckpt_dir, f'dataset_stats.pkl')
@@ -221,9 +225,9 @@ def eval_bc(config, ckpt_name, save_episode=True):
 
         ### evaluation loop
         if temporal_agg:
-            all_time_actions = torch.zeros([max_timesteps, max_timesteps+num_queries, state_dim]).to(torch.device("mps"))
+            all_time_actions = torch.zeros([max_timesteps, max_timesteps+num_queries, state_dim]).to(DEVICE)
 
-        qpos_history = torch.zeros((1, max_timesteps, state_dim)).to(torch.device("mps"))
+        qpos_history = torch.zeros((1, max_timesteps, state_dim)).to(DEVICE)
         image_list = [] # for visualization
         qpos_list = []
         target_qpos_list = []
@@ -244,7 +248,7 @@ def eval_bc(config, ckpt_name, save_episode=True):
                     image_list.append({'main': obs['image']})
                 qpos_numpy = np.array(obs['qpos'])
                 qpos = pre_process(qpos_numpy)
-                qpos = torch.from_numpy(qpos).float().to(torch.device("mps")).unsqueeze(0)
+                qpos = torch.from_numpy(qpos).float().to(DEVICE).unsqueeze(0)
                 qpos_history[:, t] = qpos
                 curr_image = get_image(ts, camera_names)
 
@@ -261,7 +265,7 @@ def eval_bc(config, ckpt_name, save_episode=True):
                         k = 0.01
                         exp_weights = np.exp(-k * np.arange(len(actions_for_curr_step)))
                         exp_weights = exp_weights / exp_weights.sum()
-                        exp_weights = torch.from_numpy(exp_weights).to(torch.device("mps")).unsqueeze(dim=1)
+                        exp_weights = torch.from_numpy(exp_weights).to(DEVICE).unsqueeze(dim=1)
                         raw_action = (actions_for_curr_step * exp_weights).sum(dim=0, keepdim=True)
                     else:
                         raw_action = all_actions[:, t % query_frequency]
@@ -277,7 +281,7 @@ def eval_bc(config, ckpt_name, save_episode=True):
                         k = 0.01
                         exp_weights = np.exp(-k * np.arange(len(actions_for_curr_step)))
                         exp_weights = exp_weights / exp_weights.sum()
-                        exp_weights = torch.from_numpy(exp_weights).to(torch.device("mps")).unsqueeze(dim=1)
+                        exp_weights = torch.from_numpy(exp_weights).to(DEVICE).unsqueeze(dim=1)
                         raw_action = (actions_for_curr_step * exp_weights).sum(dim=0, keepdim=True)
                     else:
                         raw_action = all_actions[:, t % query_frequency]
@@ -292,13 +296,13 @@ def eval_bc(config, ckpt_name, save_episode=True):
                         k = 0.01
                         exp_weights = np.exp(-k * np.arange(len(actions_for_curr_step)))
                         exp_weights = exp_weights / exp_weights.sum()
-                        exp_weights = torch.from_numpy(exp_weights).to(torch.device("mps")).unsqueeze(dim=1)
+                        exp_weights = torch.from_numpy(exp_weights).to(DEVICE).unsqueeze(dim=1)
                         raw_action = (actions_for_curr_step * exp_weights).sum(dim=0, keepdim=True)
                     else:
                         raw_action = all_actions[:, t % query_frequency]
 
                 ### post-process actions
-                raw_action = raw_action.squeeze(0).mps().numpy()
+                raw_action = raw_action.squeeze(0).cpu().numpy()
                 action = post_process(raw_action)
                 target_qpos = action
 
@@ -345,7 +349,7 @@ def eval_bc(config, ckpt_name, save_episode=True):
 
 def forward_pass(data, policy):
     image_data, qpos_data, action_data, is_pad, type = data
-    image_data, qpos_data, action_data, is_pad, type = image_data.to(torch.device("mps")), qpos_data.to(torch.device("mps")), action_data.to(torch.device("mps")), is_pad.to(torch.device("mps")), type.to(torch.device("mps"))
+    image_data, qpos_data, action_data, is_pad, type = image_data.to(DEVICE), qpos_data.to(DEVICE), action_data.to(DEVICE), is_pad.to(DEVICE), type.to(DEVICE)
     return policy(qpos_data, image_data, action_data, is_pad, type) # TODO remove None
 
 
@@ -356,12 +360,12 @@ def train_bc(train_dataloader, val_dataloader, config):
     policy_class = config['policy_class']
     policy_config = config['policy_config']
     resume_ckpt = None
-    # resume_ckpt = "/Users/is/VSCode/bachelors_diploma_v3/experiments/ckpt_dir/single_torus/policy_epoch_400_seed_0.ckpt"
+    # resume_ckpt = None  # Removed hardcoded path
 
     set_seed(seed)
 
     policy = make_policy(policy_class, policy_config)
-    policy.to(torch.device("mps"))
+    policy.to(DEVICE)
     optimizer = make_optimizer(policy_class, policy)
 
 
@@ -370,6 +374,16 @@ def train_bc(train_dataloader, val_dataloader, config):
     validation_history = []
     min_val_loss = np.inf
     best_ckpt_info = None
+    patience = 200  # Early stopping patience
+    patience_counter = 0
+    
+    # TensorBoard writer
+    writer = SummaryWriter(log_dir=os.path.join(ckpt_dir, 'tensorboard'))
+    
+    # Mixed precision scaler
+    scaler = GradScaler()
+    
+    # Compile model for faster training (PyTorch 2.x)
 
     if resume_ckpt is not None:
         checkpoint = torch.load(resume_ckpt)
@@ -399,7 +413,13 @@ def train_bc(train_dataloader, val_dataloader, config):
             if epoch_val_loss < min_val_loss:
                 min_val_loss = epoch_val_loss
                 best_ckpt_info = (epoch, min_val_loss, deepcopy(policy.state_dict()))
-        print(f'Val loss:   {epoch_val_loss:.5f}')
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                if patience_counter >= patience:
+                    print(f'Early stopping at epoch {epoch}! No improvement for {patience} epochs.')
+                    break
+        print(f'Val loss:   {epoch_val_loss:.5f} (patience: {patience_counter}/{patience})')
         summary_string = ''
         for k, v in epoch_summary.items():
             summary_string += f'{k}: {v.item():.3f} '
@@ -409,11 +429,13 @@ def train_bc(train_dataloader, val_dataloader, config):
         policy.train()
         optimizer.zero_grad()
         for batch_idx, data in enumerate(train_dataloader):
-            forward_dict = forward_pass(data, policy)
-            # backward
-            loss = forward_dict['loss']
-            loss.backward()
-            optimizer.step()
+            with autocast():
+                forward_dict = forward_pass(data, policy)
+                loss = forward_dict['loss']
+            # backward with mixed precision
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             optimizer.zero_grad()
             train_history.append(detach_dict(forward_dict))
         epoch_summary = compute_dict_mean(train_history[(batch_idx+1)*epoch:(batch_idx+1)*(epoch+1)])
@@ -423,6 +445,12 @@ def train_bc(train_dataloader, val_dataloader, config):
         for k, v in epoch_summary.items():
             summary_string += f'{k}: {v.item():.3f} '
         print(summary_string)
+        
+        # TensorBoard logging
+        writer.add_scalar('Loss/train', epoch_train_loss, epoch)
+        writer.add_scalar('Loss/val', epoch_val_loss, epoch)
+        for k, v in epoch_summary.items():
+            writer.add_scalar(f'Train/{k}', v.item(), epoch)
 
         if epoch % 100 == 0:
             ckpt_path = os.path.join(ckpt_dir, f'policy_epoch_{epoch}_seed_{seed}.ckpt')
@@ -447,6 +475,8 @@ def train_bc(train_dataloader, val_dataloader, config):
 
     # save training curves
     plot_history(train_history, validation_history, num_epochs, ckpt_dir, seed)
+    
+    writer.close()
 
     return best_ckpt_info
 

@@ -7,6 +7,8 @@ import torch
 # from .models import build_ACT_model
 from .models.detr_vae import build
 
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 import IPython
 e = IPython.embed
 
@@ -78,7 +80,7 @@ def build_ACT_model_and_optimizer(args_override):
     model = build(args)
     ### TRAIN ON CPU
     # model.cuda()
-    model.to(torch.device("mps"))
+    model.to(DEVICE)
 
     param_dicts = [
         {"params": [p for n, p in model.named_parameters() if "backbone" not in n and p.requires_grad]},

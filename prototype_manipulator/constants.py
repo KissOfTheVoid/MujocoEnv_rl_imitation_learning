@@ -1,7 +1,7 @@
 import pathlib
 
 ### Task parameters
-DATA_DIR = '/Users/is/VSCode/bachelors_diploma/v0_ALOHA/raw_data'
+DATA_DIR = str(pathlib.Path(__file__).parent.resolve()) + '/raw_data'
 SIM_TASK_CONFIGS = {
     'prototype':{
         'dataset_dir': DATA_DIR + '/sim_transfer_cube_scripted',

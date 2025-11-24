@@ -18,3 +18,4 @@ prototype_manipulator/trained_models/
 
 # Specific file
 justtxt.txt
+experiments/checkpoints/
