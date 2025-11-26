@@ -1,0 +1,21 @@
+# macOS system file
+.DS_Store
+
+# Python virtual environment
+.venv/
+
+# Python cache directories
+__pycache__/
+*/__pycache__/
+
+# Experiment outputs
+experiments/raw_data/
+experiments/ckpt_dir/
+
+# CSV orders and trained models
+prototype_manipulator/csv_orders/
+prototype_manipulator/trained_models/
+
+# Specific file
+justtxt.txt
+experiments/checkpoints/

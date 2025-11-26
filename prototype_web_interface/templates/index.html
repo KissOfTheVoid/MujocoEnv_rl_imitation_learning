@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Simple Shop</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        button { padding: 10px 20px; margin: 5px; }
+        .product { margin-bottom: 10px; }
+        #cart { margin-top: 20px; padding: 10px; border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <h2>Simple Shop</h2>
+
+    <div id="products"></div>
+
+    <div id="cart">
+        <h3>Your Cart</h3>
+        <ul id="cartItems"></ul>
+        <button onclick="order()">Order and Download CSV</button>
+    </div>
+
+    <script>
+        const cartItems = [];
+
+        async function loadProducts() {
+            const response = await fetch('/products');
+            const products = await response.json();
+            const productsDiv = document.getElementById('products');
+            products.forEach(product => {
+                const button = document.createElement('button');
+                button.textContent = product.product_name;
+                button.onclick = () => addToCart(product.product_id, product.product_name);
+                productsDiv.appendChild(button);
+            });
+        }
+
+        async function addToCart(product_id, product_name) {
+            const response = await fetch('/cart/add', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({product_id})
+            });
+            if (response.ok) {
+                cartItems.push(product_name);
+                updateCart();
+            } else {
+                alert('Failed to add product');
+            }
+        }
+
+        function updateCart() {
+            const cart = document.getElementById('cartItems');
+            cart.innerHTML = '';
+            cartItems.forEach(item => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                cart.appendChild(li);
+            });
+        }
+
+        async function order() {
+            const response = await fetch('/order', {method: 'POST'});
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'ordered_products.csv';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                cartItems.length = 0;
+                updateCart();
+            } else {
+                alert('Cart is empty or order failed.');
+            }
+        }
+
+        // Initialize product loading
+        loadProducts();
+    </script>
+</body>
+</html>

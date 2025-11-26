@@ -1,0 +1,49 @@
+<mujoco>
+    <include file="scene.xml"/>
+    <include file="vx300s_dependencies.xml"/>
+
+    <worldbody>
+        <include file="vx300s_right.xml" />
+
+        <body name="torus_body" pos="0.2 0.5 0.6">
+            <joint name="red_box_joint" type="free" frictionloss="0.01"/>
+            <inertial pos="0 0 0" mass="0.05" diaginertia="0.002 0.002 0.002"/>
+
+            <!-- Capsules forming a smaller torus -->
+            <geom type="capsule" size="0.01 0.01" rgba="0 1 0 1" name="torus_seg1" pos="0.05 0 0" euler="0 0 30"/>
+            <geom type="capsule" size="0.01 0.01" rgba="0 1 0 1" name="torus_seg2" pos="0.0433 0.025 0" euler="0 0 60"/>
+            <geom type="capsule" size="0.01 0.01" rgba="0 1 0 1" name="torus_seg3" pos="0.025 0.0433 0" euler="0 0 90"/>
+            <geom type="capsule" size="0.01 0.01" rgba="0 1 0 1" name="torus_seg4" pos="0 0.05 0" euler="0 0 120"/>
+            <geom type="capsule" size="0.01 0.01" rgba="0 1 0 1" name="torus_seg5" pos="-0.025 0.0433 0" euler="0 0 150"/>
+            <geom type="capsule" size="0.01 0.01" rgba="0 1 0 1" name="torus_seg6" pos="-0.0433 0.025 0" euler="0 0 180"/>
+            <geom type="capsule" size="0.01 0.01" rgba="0 1 0 1" name="torus_seg7" pos="-0.05 0 0" euler="0 0 210"/>
+            <geom type="capsule" size="0.01 0.01" rgba="0 1 0 1" name="torus_seg8" pos="-0.0433 -0.025 0" euler="0 0 240"/>
+            <geom type="capsule" size="0.01 0.01" rgba="0 1 0 1" name="torus_seg9" pos="-0.025 -0.0433 0" euler="0 0 270"/>
+            <geom type="capsule" size="0.01 0.01" rgba="0 1 0 1" name="torus_seg10" pos="0 -0.05 0" euler="0 0 300"/>
+            <geom type="capsule" size="0.01 0.01" rgba="0 1 0 1" name="torus_seg11" pos="0.025 -0.0433 0" euler="0 0 330"/>
+            <geom type="capsule" size="0.01 0.01" rgba="0 1 0 1" name="torus_seg12" pos="0.0433 -0.025 0" euler="0 0 0"/>
+        </body>
+
+    </worldbody>
+
+    <actuator>
+
+        <position ctrllimited="true" ctrlrange="-3.14158 3.14158" joint="vx300s_right/waist" kp="800"  user="1" forcelimited="true" forcerange="-150 150"/>
+        <position ctrllimited="true" ctrlrange="-1.85005 1.25664" joint="vx300s_right/shoulder" kp="1600"  user="1" forcelimited="true" forcerange="-300 300"/>
+        <position ctrllimited="true" ctrlrange="-1.76278 1.6057" joint="vx300s_right/elbow" kp="800"  user="1" forcelimited="true" forcerange="-100 100"/>
+        <position ctrllimited="true" ctrlrange="-3.14158 3.14158" joint="vx300s_right/forearm_roll" kp="10"  user="1" forcelimited="true" forcerange="-100 100"/>
+        <position ctrllimited="true" ctrlrange="-1.8675 2.23402" joint="vx300s_right/wrist_angle" kp="50"  user="1"/>
+        <position ctrllimited="true" ctrlrange="-3.14158 3.14158" joint="vx300s_right/wrist_rotate" kp="20"  user="1"/>
+        <position ctrllimited="true" ctrlrange="0.021 0.057" joint="vx300s_right/left_finger" kp="200"  user="1"/>
+        <position ctrllimited="true" ctrlrange="-0.057 -0.021" joint="vx300s_right/right_finger" kp="200"  user="1"/>
+
+    </actuator>
+
+    <keyframe>
+        <key qpos="
+        0 -0.96 1.16 0 -0.3 0 0.024 -0.024  
+        0.2 0.5 0.05 1 0 0 0"/>
+    </keyframe>
+
+
+</mujoco>

@@ -1,0 +1,42 @@
+# 1. Recording episodes
+python record_sim_episodes.py \
+--task_name i \ # choose from [single_cube, single_torus, multiple_red, miltiple_green, multiple_blue, mix_cube]
+--dataset_dir s \ # specify the directory where recorded data willbe saved
+--num_episodes k \ # specify number of episodes
+--onscreen_render
+
+# 2. Visualizing episodes
+python visualize_episodes.py \
+--dataset_dir i \ # specify the directory with dataset
+--episode_idx s \ £ specify index of the epsidoe to be replayed
+
+# 3. Training 
+bin/python imitate_episodes.py \
+--kl_weight 10 --chunk_size 100 --hidden_dim 512 --batch_size 8 --dim_feedforward 3200 --lr 1e-5 --seed 0 \
+--task_name mix_cube \
+--ckpt_dir /Users/is/VSCode/bachelors_diploma_v3/experiments/ckpt_dir/mix_cube \
+--num_epochs 1000 \
+--policy_class ACT
+
+# 4. Training from checkpoint
+TODO
+
+# 5. Eval
+python imitate_episodes.py \
+--kl_weight 10 --chunk_size 100 --hidden_dim 512 --batch_size 8 --dim_feedforward 3200 --lr 1e-5 --seed 0 \
+--task_name mix_cube \
+--ckpt_dir /Users/is/VSCode/bachelors_diploma_v3/experiments/ckpt_dir/mix_cube \
+--num_epochs 2000 \
+--policy_class ACT \
+--eval \
+--onscreen_render \
+--temporal_agg
+
+## Prototype
+# 6.1 Run web interface
+python app.py
+
+# 6.2 Run manipulator script
+python main.py \
+--ckpt_dir /Users/is/VSCode/bachelors_diploma_v3/prototype_manipulator/trained_model \
+--csv_path /Users/is/VSCode/bachelors_diploma_v3/prototype_manipulator/csv_orders/ordered_products.csv
