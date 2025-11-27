@@ -263,7 +263,16 @@ def initialize_policy(ckpt_name, ckpt_dir, policy_class, policy_config):
 
     ckpt_path = os.path.join(str(ckpt_dir), str(ckpt_name))
     policy = ACTPolicy(policy_config)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # Device selection with MPS support
+    if torch.backends.mps.is_available():
+        device = torch.device("mps")
+        print("Using Apple MPS device for loading")
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+        print("Using CUDA device for loading")
+    else:
+        device = torch.device("cpu")
+        print("Using CPU device for loading")
     loading_status = policy.load_state_dict(
         torch.load(ckpt_path, map_location=device)['policy_state_dict']
     )
