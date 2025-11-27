@@ -275,7 +275,7 @@ class TransferTorusTask(BimanualViperXTask):
 class TransferMixCube(BimanualViperXTask):
     def __init__(self, random=None):
         super().__init__(random=random)
-        self.max_reward = 4
+        self.max_reward = 6  # Updated: both cubes in correct zones
 
     def initialize_episode(self, physics):
         """Sets the state of the environment at the start of each episode."""
@@ -305,15 +305,39 @@ class TransferMixCube(BimanualViperXTask):
             contact_pair = (name_geom_1, name_geom_2)
             all_contact_pairs.append(contact_pair)
 
+        # Get cube positions (using body names, not geom names)
+        green_box_pos = physics.named.data.xpos['box']  # Green cube (body name: 'box')
+        red_box_pos = physics.named.data.xpos['box2']  # Red cube (body name: 'box2')
+
+        # Target zone positions (from XML)
+        green_zone_pos = np.array([0.0, 0.7, 0.05])
+        red_zone_pos = np.array([0.15, 0.7, 0.05])
+
+        # Check if cube is in correct zone (within 5cm radius in x-y plane)
+        def is_in_zone(box_pos, zone_pos, threshold=0.05):
+            distance = np.linalg.norm(box_pos[:2] - zone_pos[:2])
+            return distance < threshold
+
         touch_right_gripper = (("red_box", "vx300s_right/10_right_gripper_finger") in all_contact_pairs) \
-                                or (("red_box2", "vx300s_right/10_right_gripper_finger"))  in all_contact_pairs 
+                                or (("red_box2", "vx300s_right/10_right_gripper_finger"))  in all_contact_pairs
         touch_table =  (("red_box", "table") in all_contact_pairs) \
                                  and (("red_box2", "table") in all_contact_pairs)
+
+        green_in_green_zone = is_in_zone(green_box_pos, green_zone_pos)
+        red_in_red_zone = is_in_zone(red_box_pos, red_zone_pos)
+
         reward = 0
         if touch_right_gripper:
-            reward = 1
+            reward = 1  # Touched cube
         if touch_right_gripper and (not touch_table): # lifted
-            reward = 4
+            reward = 2  # Lifted cube
+        if green_in_green_zone:
+            reward = 3  # Green in green zone
+        if red_in_red_zone:
+            reward = 4  # Red in red zone
+        if green_in_green_zone and red_in_red_zone:
+            reward = 6  # BOTH cubes in correct zones!
+
         return reward
     
 class TransferMixCubeEvaluateFirst(BimanualViperXTask):

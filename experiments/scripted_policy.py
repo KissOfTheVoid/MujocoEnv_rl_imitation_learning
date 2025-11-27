@@ -114,23 +114,42 @@ class PickTransferMixCube(BasePolicy):
         init_mocap_pose_right = ts_first.observation['mocap_pose_right']
 
         box_info = np.array(ts_first.observation['env_state'])
-        if not type: # CUBE STATE 1 
-            box_xyz = box_info[:3] # FIRST CUBE
-        else:
-            box_xyz = box_info[7:10] # SECOND CUBE
+        if not type: # Green cube (type=0)
+            box_xyz = box_info[:3] # FIRST CUBE (green)
+            target_zone = np.array([0.0, 0.7, 0.08])  # Green zone
+        else:  # Red cube (type=1)
+            box_xyz = box_info[7:10] # SECOND CUBE (red)
+            target_zone = np.array([0.15, 0.7, 0.08])  # Red zone
         # print("CUBE1:", box_info[:3],"\nCUBE2:", box_info[7:10],"\ntraj_XYZ:", box_xyz)
 
         gripper_pick_quat = Quaternion(init_mocap_pose_right[3:])
         gripper_pick_quat = gripper_pick_quat * Quaternion(axis=[0.0, 1.0, 0.0], degrees=-60)
 
-        meet_xyz = np.array([0, 0.5, 0.25])
+        # Retract position after placing cube
+        retract_position = target_zone + np.array([0, 0, 0.25])
 
         self.right_trajectory = [
-            {"t": 0, "xyz": init_mocap_pose_right[:3], "quat": init_mocap_pose_right[3:], "gripper": 0}, # sleep
-            {"t": 90, "xyz": box_xyz + np.array([0, 0, 0.08]), "quat": gripper_pick_quat.elements, "gripper": 1}, # approach the cube
-            {"t": 130, "xyz": box_xyz + np.array([0, 0, -0.015]), "quat": gripper_pick_quat.elements, "gripper": 1}, # go down
-            {"t": 170, "xyz": box_xyz + np.array([0, 0, -0.015]), "quat": gripper_pick_quat.elements, "gripper": 0}, # close gripper
-            {"t": 200, "xyz": meet_xyz + np.array([0.05, 0, 0]), "quat": gripper_pick_quat.elements, "gripper": 0}, # approach meet position
+            # Phase 1: Approach cube
+            {"t": 0, "xyz": init_mocap_pose_right[:3], "quat": init_mocap_pose_right[3:], "gripper": 0}, # start position
+            {"t": 90, "xyz": box_xyz + np.array([0, 0, 0.08]), "quat": gripper_pick_quat.elements, "gripper": 1}, # approach above cube
+
+            # Phase 2: Grasp
+            {"t": 130, "xyz": box_xyz + np.array([0, 0, -0.015]), "quat": gripper_pick_quat.elements, "gripper": 1}, # descend to cube
+            {"t": 170, "xyz": box_xyz + np.array([0, 0, -0.015]), "quat": gripper_pick_quat.elements, "gripper": 0}, # close gripper (grasp!)
+
+            # Phase 3: Lift cube
+            {"t": 210, "xyz": box_xyz + np.array([0, 0, 0.15]), "quat": gripper_pick_quat.elements, "gripper": 0}, # lift up
+
+            # Phase 4: Move to target zone
+            {"t": 250, "xyz": target_zone + np.array([0, 0, 0.15]), "quat": gripper_pick_quat.elements, "gripper": 0}, # above target zone
+
+            # Phase 5: Place in zone
+            {"t": 290, "xyz": target_zone, "quat": gripper_pick_quat.elements, "gripper": 0}, # lower into zone
+            {"t": 310, "xyz": target_zone, "quat": gripper_pick_quat.elements, "gripper": 1}, # open gripper (release!)
+
+            # Phase 6: Retract gripper upward
+            {"t": 350, "xyz": retract_position, "quat": gripper_pick_quat.elements, "gripper": 1}, # lift gripper up
+            {"t": 400, "xyz": retract_position, "quat": gripper_pick_quat.elements, "gripper": 1}, # hold position
         ]
 
 

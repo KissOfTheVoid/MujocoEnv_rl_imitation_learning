@@ -1,7 +1,7 @@
 import pathlib
 
 ### Task parameters
-DATA_DIR = '/home/iskopyl/bachelors_diploma/experiments/raw_data'
+DATA_DIR = '/Volumes/T7 Shield/MujocoEnv_rl_imitation_learning/experiments/raw_data'
 
 SIM_TASK_CONFIGS = {
     'sim_transfer_cube_scripted':{
@@ -48,8 +48,8 @@ SIM_TASK_CONFIGS = {
 
     'mix_cube':{
         'dataset_dir': DATA_DIR + '/mix_cube/',
-        'num_episodes': 125,
-        'episode_len': 200,
+        'num_episodes': 300,
+        'episode_len': 400,  # Updated: extended trajectory with zone placement
         'camera_names': ['top']
     },
 
