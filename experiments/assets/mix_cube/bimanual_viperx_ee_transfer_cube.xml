@@ -28,6 +28,16 @@
             <geom condim="4" solimp="2 1 0.01" solref="0.01 1" friction="1 0.005 0.0001" pos="0 0 0" size="0.02 0.02 0.02" type="box" name="red_box2" rgba="1 0 0 1" />
         </body>
 
+        <!-- Target zones for cube placement (3D boxes) -->
+        <body name="green_target_zone" pos="0.0 0.7 0.025">
+            <geom type="box" size="0.05 0.05 0.025" rgba="0 1 0 0.5"
+                  name="green_zone" contype="0" conaffinity="0"/>
+        </body>
+
+        <body name="red_target_zone" pos="0.15 0.7 0.025">
+            <geom type="box" size="0.05 0.05 0.025" rgba="1 0 0 0.5"
+                  name="red_zone" contype="0" conaffinity="0"/>
+        </body>
 
     </worldbody>
 

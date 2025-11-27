@@ -275,7 +275,7 @@ class TransferTorusTask(BimanualViperXTask):
 class TransferMixCube(BimanualViperXTask):
     def __init__(self, random=None):
         super().__init__(random=random)
-        self.max_reward = 6  # Updated: both cubes in correct zones
+        self.max_reward = 4  # Single cube in correct zone (green=4 or red=4)
 
     def initialize_episode(self, physics):
         """Sets the state of the environment at the start of each episode."""
@@ -309,12 +309,14 @@ class TransferMixCube(BimanualViperXTask):
         green_box_pos = physics.named.data.xpos['box']  # Green cube (body name: 'box')
         red_box_pos = physics.named.data.xpos['box2']  # Red cube (body name: 'box2')
 
-        # Target zone positions (from XML)
-        green_zone_pos = np.array([0.0, 0.7, 0.05])
-        red_zone_pos = np.array([0.15, 0.7, 0.05])
+        # Target zone positions (from XML: pos="x y z")
+        green_zone_pos = np.array([0.0, 0.7, 0.025])
+        red_zone_pos = np.array([0.15, 0.7, 0.025])
 
-        # Check if cube is in correct zone (within 5cm radius in x-y plane)
-        def is_in_zone(box_pos, zone_pos, threshold=0.05):
+        # Check if cube is fully inside zone (center + boundaries)
+        # Zone size: 0.05 (half) = 10cm full, Cube size: 0.02 (half) = 4cm full
+        # For cube to fit entirely: center must be within (5cm - 2cm) = 3cm from zone center
+        def is_in_zone(box_pos, zone_pos, threshold=0.03):
             distance = np.linalg.norm(box_pos[:2] - zone_pos[:2])
             return distance < threshold
 
@@ -331,12 +333,14 @@ class TransferMixCube(BimanualViperXTask):
             reward = 1  # Touched cube
         if touch_right_gripper and (not touch_table): # lifted
             reward = 2  # Lifted cube
+        # Zone rewards override touch/lift rewards (cube already placed)
         if green_in_green_zone:
-            reward = 3  # Green in green zone
+            reward = 4  # Green in green zone (EQUAL to red!)
         if red_in_red_zone:
-            reward = 4  # Red in red zone
+            reward = 4  # Red in red zone (EQUAL to green!)
+        # Both cubes in zones (only possible in special scenarios)
         if green_in_green_zone and red_in_red_zone:
-            reward = 6  # BOTH cubes in correct zones!
+            reward = 8  # BOTH cubes in correct zones!
 
         return reward
     
