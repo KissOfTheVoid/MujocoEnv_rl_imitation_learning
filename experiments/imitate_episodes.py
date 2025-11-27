@@ -2,7 +2,11 @@ import torch
 import numpy as np
 import os
 from torch.utils.tensorboard import SummaryWriter
-from torch.cuda.amp import GradScaler, autocast
+try:
+    from torch.cuda.amp import GradScaler, autocast
+    CUDA_AMP_AVAILABLE = True
+except ImportError:
+    CUDA_AMP_AVAILABLE = False
 import pickle
 import argparse
 import matplotlib.pyplot as plt
@@ -20,7 +24,16 @@ from visualize_episodes import save_videos
 
 from sim_env import BOX_POSE
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# Device selection with MPS support
+if torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+    print("Using Apple MPS device")
+elif torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+    print("Using CUDA device")
+else:
+    DEVICE = torch.device("cpu")
+    print("Using CPU device")
 
 import IPython
 e = IPython.embed
@@ -379,9 +392,14 @@ def train_bc(train_dataloader, val_dataloader, config):
     
     # TensorBoard writer
     writer = SummaryWriter(log_dir=os.path.join(ckpt_dir, 'tensorboard'))
-    
-    # Mixed precision scaler
-    scaler = GradScaler()
+
+    # Mixed precision scaler (only for CUDA)
+    use_amp = CUDA_AMP_AVAILABLE and DEVICE.type == 'cuda'
+    if use_amp:
+        scaler = GradScaler()
+        print("Using mixed precision training")
+    else:
+        print("Mixed precision training disabled (not available on MPS/CPU)")
     
     # Compile model for faster training (PyTorch 2.x)
 
@@ -429,13 +447,20 @@ def train_bc(train_dataloader, val_dataloader, config):
         policy.train()
         optimizer.zero_grad()
         for batch_idx, data in enumerate(train_dataloader):
-            with autocast():
+            if use_amp:
+                with autocast():
+                    forward_dict = forward_pass(data, policy)
+                    loss = forward_dict['loss']
+                # backward with mixed precision
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
                 forward_dict = forward_pass(data, policy)
                 loss = forward_dict['loss']
-            # backward with mixed precision
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+                # backward without mixed precision
+                loss.backward()
+                optimizer.step()
             optimizer.zero_grad()
             train_history.append(detach_dict(forward_dict))
         epoch_summary = compute_dict_mean(train_history[(batch_idx+1)*epoch:(batch_idx+1)*(epoch+1)])

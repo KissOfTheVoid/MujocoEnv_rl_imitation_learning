@@ -7,7 +7,16 @@ import torch
 # from .models import build_ACT_model
 from .models.detr_vae import build
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# Device selection with MPS support
+if torch.backends.mps.is_available():
+    DEVICE = torch.device("mps")
+    print("Using Apple MPS device")
+elif torch.cuda.is_available():
+    DEVICE = torch.device("cuda")
+    print("Using CUDA device")
+else:
+    DEVICE = torch.device("cpu")
+    print("Using CPU device")
 
 import IPython
 e = IPython.embed
