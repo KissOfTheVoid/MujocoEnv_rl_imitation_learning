@@ -149,7 +149,8 @@ python imitate_episodes.py \
     --chunk_size 100 \
     --hidden_dim 512 \
     --dim_feedforward 3200 \
-    --temporal_agg
+    --temporal_agg \
+    --resume_ckpt ./checkpoints/mix_cube/policy_best.ckpt  # для продолжения обучения/дообучения
 ```
 
 Параметр `--num_epochs` указывает эпоху чекпоинта для загрузки.
@@ -194,6 +195,17 @@ export MUJOCO_GL=osmesa
 
 ### Ошибка "env not found" при eval
 Убедитесь что task_name совпадает с ключом в `sim_env.py` (например, используйте `mix_cube` вместо `mix_cube_400` для eval)
+
+## Быстрый запуск веб-интерфейса с очередью действий
+
+- Запуск Flask UI и воркера очереди (локально):
+  ```bash
+  ./orchestrator_demo.sh
+  ```
+  UI: http://127.0.0.1:5000 — можно ставить объекты на 3D-сцене, отправлять действия в очередь, скачивать CSV сцены/заказа.
+- Воркеры:
+  - `prototype_web_interface/action_worker_stub.py` — пример опроса очереди.
+  - `prototype_manipulator/queue_worker.py` — опрос очереди, сюда подключайте реальный исполнитель/нейронку.
 
 ## Ссылки
 

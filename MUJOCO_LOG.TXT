@@ -1,0 +1,6 @@
+Fri Nov 28 12:04:59 2025
+WARNING: mju_openResource: could not open resource 'scene.xml' with default provider at slot 1
+
+Fri Nov 28 12:04:59 2025
+WARNING: mju_openResource: unknown file 'scene.xml'
+

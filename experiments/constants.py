@@ -35,7 +35,7 @@ SIM_TASK_CONFIGS = {
     'single_cube':{
         'dataset_dir': DATA_DIR + '/single_cube/',
         'num_episodes': 50,
-        'episode_len': 200,
+        'episode_len': 300,
         'camera_names': ['top']
     },
 
@@ -49,7 +49,7 @@ SIM_TASK_CONFIGS = {
     'mix_cube':{
         'dataset_dir': DATA_DIR + '/mix_cube/',
         'num_episodes': 125,
-        'episode_len': 200,
+        'episode_len': 300,
         'camera_names': ['top']
     },
 

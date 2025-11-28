@@ -8,13 +8,18 @@ from constants import PUPPET_GRIPPER_POSITION_UNNORMALIZE_FN
 from constants import PUPPET_GRIPPER_POSITION_NORMALIZE_FN
 from constants import PUPPET_GRIPPER_VELOCITY_NORMALIZE_FN
 
-from utils import sample_box_pose
+from utils import sample_box_pose, sample_goal_zone_pose
 from dm_control import mujoco
 from dm_control.rl import control
 from dm_control.suite import base
 
 import IPython
 e = IPython.embed
+GOAL_POSE = [np.array([0.15, 0.75, 0.001])]
+
+
+def set_goal_zone_pose(pose):
+    GOAL_POSE[0] = np.array(pose)
 
 
 def make_ee_sim_env(task_name):
@@ -300,6 +305,7 @@ class TransferMixCube(BimanualViperXEETask):
         box_start_idx = physics.model.name2id('red_box_joint', 'joint')
 
         np.copyto(physics.data.qpos[box_start_idx : box_start_idx + 14], poses)
+        np.copyto(physics.named.model.body_pos['goal_zone'], GOAL_POSE[0])
         # print(f"randomized cube position to {cube_pose}")
 
         super().initialize_episode(physics)

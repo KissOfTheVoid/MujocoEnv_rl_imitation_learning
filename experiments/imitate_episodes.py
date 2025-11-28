@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from copy import deepcopy
 from tqdm import tqdm
 from einops import rearrange
+import os
 
 from constants import DT
 from constants import PUPPET_GRIPPER_JOINT_OPEN
@@ -33,6 +34,8 @@ DEVICE = get_device()
 AMP_ENABLED = DEVICE.type == "cuda"  # torch.autocast does not support mps on this version
 AMP_DTYPE = torch.float16
 
+# allow more CPU threads; cap at available cores
+torch.set_num_threads(min(16, os.cpu_count() or 16))
 import IPython
 e = IPython.embed
 
@@ -48,6 +51,7 @@ def main(args):
     batch_size_train = args['batch_size']
     batch_size_val = args['batch_size']
     num_epochs = args['num_epochs']
+    num_rollouts = args.get('num_rollouts', 50)
 
     # get task parameters
     # is_sim = task_name[:4] == 'sim_'
@@ -106,13 +110,13 @@ def main(args):
         for ckpt_name in ckpt_names:
             if config['task_name'] == 'mix_cube': # Evaluate separately for grasping first cube and second cube
                 config['task_name'] = 'mix_cube_first'
-                success_rate, avg_return = eval_bc(config, ckpt_name, save_episode=True)
+                success_rate, avg_return = eval_bc(config, ckpt_name, save_episode=True, num_rollouts=num_rollouts)
                 results.append([ckpt_name, success_rate, avg_return])
                 config['task_name'] = 'mix_cube_second'
-                success_rate, avg_return = eval_bc(config, ckpt_name, save_episode=True)
+                success_rate, avg_return = eval_bc(config, ckpt_name, save_episode=True, num_rollouts=num_rollouts)
                 results.append([ckpt_name, success_rate, avg_return])
             else:
-                success_rate, avg_return = eval_bc(config, ckpt_name, save_episode=True)
+                success_rate, avg_return = eval_bc(config, ckpt_name, save_episode=True, num_rollouts=num_rollouts)
                 results.append([ckpt_name, success_rate, avg_return])
 
         for ckpt_name, success_rate, avg_return in results:
@@ -164,7 +168,7 @@ def get_image(ts, camera_names):
     return curr_image
 
 
-def eval_bc(config, ckpt_name, save_episode=True):
+def eval_bc(config, ckpt_name, save_episode=True, num_rollouts=50):
     set_seed(1000)
     ckpt_dir = config['ckpt_dir']
     state_dim = config['state_dim']
@@ -209,7 +213,6 @@ def eval_bc(config, ckpt_name, save_episode=True):
 
     max_timesteps = int(max_timesteps * 1) # may increase for real-world tasks
 
-    num_rollouts = 50
     episode_returns = []
     highest_rewards = []
     for rollout_id in range(num_rollouts):
@@ -371,8 +374,7 @@ def train_bc(train_dataloader, val_dataloader, config):
     seed = config['seed']
     policy_class = config['policy_class']
     policy_config = config['policy_config']
-    resume_ckpt = None
-    # resume_ckpt = None  # Removed hardcoded path
+    resume_ckpt = config.get('resume_ckpt')
 
     set_seed(seed)
 
@@ -398,14 +400,23 @@ def train_bc(train_dataloader, val_dataloader, config):
     # Compile model for faster training (PyTorch 2.x)
 
     if resume_ckpt is not None:
-        checkpoint = torch.load(resume_ckpt)
-        policy.load_state_dict(checkpoint['policy_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        start_epoch = checkpoint['epoch'] + 1
-        train_history = checkpoint['train_hitory']
-        validation_history = checkpoint['validation_history']
-        min_val_loss = checkpoint['min_val_loss']
-        best_ckpt_info = checkpoint['best_ckpt_info']
+        checkpoint = torch.load(resume_ckpt, map_location=DEVICE)
+        if 'policy_state_dict' in checkpoint:
+            policy.load_state_dict(checkpoint['policy_state_dict'])
+        else:
+            policy.load_state_dict(checkpoint)
+        if 'optimizer_state_dict' in checkpoint:
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        if 'epoch' in checkpoint:
+            start_epoch = checkpoint['epoch'] + 1
+        if 'train_hitory' in checkpoint:
+            train_history = checkpoint['train_hitory']
+        if 'validation_history' in checkpoint:
+            validation_history = checkpoint['validation_history']
+        if 'min_val_loss' in checkpoint:
+            min_val_loss = checkpoint['min_val_loss']
+        if 'best_ckpt_info' in checkpoint:
+            best_ckpt_info = checkpoint['best_ckpt_info']
         print(f'Resuming from chkpt {resume_ckpt} at epoch {start_epoch}')
 
 
@@ -525,6 +536,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', action='store', type=int, help='batch_size', required=True)
     parser.add_argument('--seed', action='store', type=int, help='seed', required=True)
     parser.add_argument('--num_epochs', action='store', type=int, help='num_epochs', required=True)
+    parser.add_argument('--num_rollouts', action='store', type=int, default=50, help='num rollouts during eval')
     parser.add_argument('--lr', action='store', type=float, help='lr', required=True)
 
     # for ACT
@@ -533,6 +545,7 @@ if __name__ == '__main__':
     parser.add_argument('--hidden_dim', action='store', type=int, help='hidden_dim', required=False)
     parser.add_argument('--dim_feedforward', action='store', type=int, help='dim_feedforward', required=False)
     parser.add_argument('--temporal_agg', action='store_true')
+    parser.add_argument('--resume_ckpt', action='store', type=str, required=False, help='Path to checkpoint to resume training')
     # parser.add_argument('--resume_path', action='store', type=str, required=False)
     
 

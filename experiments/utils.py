@@ -111,6 +111,11 @@ def get_norm_stats(dataset_dir, num_episodes):
 
 
 def load_data(dataset_dir, num_episodes, camera_names, batch_size_train, batch_size_val):
+    num_workers = int(os.environ.get("DL_NUM_WORKERS", 4))
+    prefetch_factor = int(os.environ.get("DL_PREFETCH_FACTOR", 2))
+    pin_memory = os.environ.get("DL_PIN_MEMORY", "false").lower() == "true"
+    persistent_workers = os.environ.get("DL_PERSISTENT", "true").lower() == "true"
+
     print("loading data")
     print(f'\nData from: {dataset_dir}\n')
     # obtain train test split
@@ -127,8 +132,24 @@ def load_data(dataset_dir, num_episodes, camera_names, batch_size_train, batch_s
     # print(train_dataset[0])
     val_dataset = EpisodicDataset(val_indices, dataset_dir, camera_names, norm_stats)
     # print(val_dataset[0])
-    train_dataloader = DataLoader(train_dataset, batch_size=batch_size_train, shuffle=True, pin_memory=True, num_workers=6, prefetch_factor=4)
-    val_dataloader = DataLoader(val_dataset, batch_size=batch_size_val, shuffle=True, pin_memory=True, num_workers=6, prefetch_factor=4)
+    train_dataloader = DataLoader(
+        train_dataset,
+        batch_size=batch_size_train,
+        shuffle=True,
+        pin_memory=pin_memory,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
+        persistent_workers=persistent_workers,
+    )
+    val_dataloader = DataLoader(
+        val_dataset,
+        batch_size=batch_size_val,
+        shuffle=True,
+        pin_memory=pin_memory,
+        num_workers=num_workers,
+        prefetch_factor=prefetch_factor,
+        persistent_workers=persistent_workers,
+    )
     return train_dataloader, val_dataloader, norm_stats, train_dataset.is_sim
 
 
@@ -156,6 +177,14 @@ def compute_dict_mean(epoch_dicts):
             value_sum += epoch_dict[k]
         result[k] = value_sum / num_items
     return result
+
+
+def sample_goal_zone_pose():
+    """Random goal_zone center kept away from cube spawn band."""
+    x = np.random.uniform(0.05, 0.25)
+    y = np.random.uniform(0.65, 0.85)  # выше полосы спауна кубов
+    z = 0.001
+    return np.array([x, y, z])
 
 def detach_dict(d):
     new_d = dict()
