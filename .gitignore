@@ -24,3 +24,10 @@ experiments/checkpoints/
 *.mp4
 *.png
 ._*
+
+# HDF5 dataset files
+*.hdf5
+experiments/test_color_zones_demos/
+
+# Debug logs
+*.log
