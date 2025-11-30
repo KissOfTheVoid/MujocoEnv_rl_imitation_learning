@@ -19,3 +19,8 @@ prototype_manipulator/trained_models/
 # Specific file
 justtxt.txt
 experiments/checkpoints/
+
+# Video and image files
+*.mp4
+*.png
+._*
