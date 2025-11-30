@@ -14,6 +14,39 @@ import IPython
 e = IPython.embed
 
 BOX_POSE = [None] # to be changed from outside
+GOAL_POSE = [np.array([0.15, 0.75, 0.001])]
+
+
+def set_goal_zone_pose(pose):
+    GOAL_POSE[0] = np.array(pose)
+
+
+def _stacking_reward(physics):
+    """Reward shaping: red cube to goal zone, green cube stacked atop red."""
+    goal = GOAL_POSE[0]
+    # body names: "box" (green), "box2" (red)
+    red_pos = physics.named.data.xpos['box2']   # red cube center
+    green_pos = physics.named.data.xpos['box']  # green cube center
+    goal_radius = 0.03
+    stack_xy_tol = 0.02
+    stack_z_tol = 0.02
+    cube_height = 0.04  # approx edge length
+
+    red_in_zone = np.linalg.norm(red_pos[:2] - goal[:2]) < goal_radius
+    red_height_ok = abs(red_pos[2] - (goal[2] + cube_height / 2)) < 0.02
+
+    green_on_red = (
+        red_in_zone
+        and np.linalg.norm(green_pos[:2] - red_pos[:2]) < stack_xy_tol
+        and abs((green_pos[2] - red_pos[2]) - cube_height) < stack_z_tol
+    )
+
+    reward = 0
+    if red_in_zone and red_height_ok:
+        reward = max(reward, 2)
+    if green_on_red:
+        reward = max(reward, 4)
+    return reward
 
 def make_sim_env(task_name):
     """
@@ -165,6 +198,7 @@ class TransferSingleCubeTask(BimanualViperXTask):
 
         touch_right_gripper = ("red_box", "vx300s_right/10_right_gripper_finger") in all_contact_pairs
         touch_table = ("red_box", "table") in all_contact_pairs
+        placed = touch_table and not touch_right_gripper
 
         # not_lift_wrong_object = ("red_box2", "table") in all_contact_pairs
 
@@ -173,6 +207,8 @@ class TransferSingleCubeTask(BimanualViperXTask):
             reward = 1
         if touch_right_gripper and not touch_table: # lifted
             reward = 4
+        if placed:
+            reward = max(reward, 2)  # reward for placing back on the table
         # if not not_lift_wrong_object:
         #     reward = 2
 
@@ -213,12 +249,15 @@ class TransferTripleCubeTask(BimanualViperXTask):
 
         touch_right_gripper = ("red_box", "vx300s_right/10_right_gripper_finger") in all_contact_pairs
         touch_table = ("red_box", "table") in all_contact_pairs
+        placed = touch_table and not touch_right_gripper
 
         reward = 0
         if touch_right_gripper:
             reward = 1
         if touch_right_gripper and not touch_table: # lifted
             reward = 4
+        if placed:
+            reward = max(reward, 2)  # placed down
 
         return reward
     
@@ -263,19 +302,22 @@ class TransferTorusTask(BimanualViperXTask):
             ((f"torus_seg{i}", "table") or ("table", f"torus_seg{i}")) in all_contact_pairs 
             for i in range(1, 13)
         )
+        placed = touch_table and not touch_right_gripper
 
         reward = 0
         if touch_right_gripper:
             reward = 1
         if touch_right_gripper and not touch_table: # lifted
             reward = 4
+        if placed:
+            reward = max(reward, 2)
 
         return reward
     
 class TransferMixCube(BimanualViperXTask):
     def __init__(self, random=None):
         super().__init__(random=random)
-        self.max_reward = 4  # Single cube in correct zone (green=4 or red=4)
+        self.max_reward = 4
 
     def initialize_episode(self, physics):
         """Sets the state of the environment at the start of each episode."""
@@ -286,6 +328,8 @@ class TransferMixCube(BimanualViperXTask):
             np.copyto(physics.data.ctrl, START_ARM_POSE)
             assert BOX_POSE[0] is not None
             physics.named.data.qpos[8:] = BOX_POSE[0]
+            # move goal zone to requested pose
+            np.copyto(physics.named.model.body_pos['goal_zone'], GOAL_POSE[0])
             # print(f"{BOX_POSE=}")
         super().initialize_episode(physics)
 
@@ -295,54 +339,7 @@ class TransferMixCube(BimanualViperXTask):
         return env_state
 
     def get_reward(self, physics):
-        # return whether left gripper is holding the box
-        all_contact_pairs = []
-        for i_contact in range(physics.data.ncon):
-            id_geom_1 = physics.data.contact[i_contact].geom1
-            id_geom_2 = physics.data.contact[i_contact].geom2
-            name_geom_1 = physics.model.id2name(id_geom_1, 'geom')
-            name_geom_2 = physics.model.id2name(id_geom_2, 'geom')
-            contact_pair = (name_geom_1, name_geom_2)
-            all_contact_pairs.append(contact_pair)
-
-        # Get cube positions (using body names, not geom names)
-        green_box_pos = physics.named.data.xpos['box']  # Green cube (body name: 'box')
-        red_box_pos = physics.named.data.xpos['box2']  # Red cube (body name: 'box2')
-
-        # Target zone positions (from XML: pos="x y z")
-        green_zone_pos = np.array([0.0, 0.7, 0.025])
-        red_zone_pos = np.array([0.15, 0.7, 0.025])
-
-        # Check if cube is fully inside zone (center + boundaries)
-        # Zone size: 0.05 (half) = 10cm full, Cube size: 0.02 (half) = 4cm full
-        # For cube to fit entirely: center must be within (5cm - 2cm) = 3cm from zone center
-        def is_in_zone(box_pos, zone_pos, threshold=0.03):
-            distance = np.linalg.norm(box_pos[:2] - zone_pos[:2])
-            return distance < threshold
-
-        touch_right_gripper = (("red_box", "vx300s_right/10_right_gripper_finger") in all_contact_pairs) \
-                                or (("red_box2", "vx300s_right/10_right_gripper_finger"))  in all_contact_pairs
-        touch_table =  (("red_box", "table") in all_contact_pairs) \
-                                 and (("red_box2", "table") in all_contact_pairs)
-
-        green_in_green_zone = is_in_zone(green_box_pos, green_zone_pos)
-        red_in_red_zone = is_in_zone(red_box_pos, red_zone_pos)
-
-        reward = 0
-        if touch_right_gripper:
-            reward = 1  # Touched cube
-        if touch_right_gripper and (not touch_table): # lifted
-            reward = 2  # Lifted cube
-        # Zone rewards override touch/lift rewards (cube already placed)
-        if green_in_green_zone:
-            reward = 4  # Green in green zone (EQUAL to red!)
-        if red_in_red_zone:
-            reward = 4  # Red in red zone (EQUAL to green!)
-        # Both cubes in zones (only possible in special scenarios)
-        if green_in_green_zone and red_in_red_zone:
-            reward = 8  # BOTH cubes in correct zones!
-
-        return reward
+        return _stacking_reward(physics)
     
 class TransferMixCubeEvaluateFirst(BimanualViperXTask):
     def __init__(self, random=None):
@@ -358,6 +355,7 @@ class TransferMixCubeEvaluateFirst(BimanualViperXTask):
             np.copyto(physics.data.ctrl, START_ARM_POSE)
             assert BOX_POSE[0] is not None
             physics.named.data.qpos[8:] = BOX_POSE[0]
+            np.copyto(physics.named.model.body_pos['goal_zone'], GOAL_POSE[0])
             # print(f"{BOX_POSE=}")
         super().initialize_episode(physics)
 
@@ -367,30 +365,7 @@ class TransferMixCubeEvaluateFirst(BimanualViperXTask):
         return env_state
 
     def get_reward(self, physics):
-        # return whether left gripper is holding the box
-        all_contact_pairs = []
-        for i_contact in range(physics.data.ncon):
-            id_geom_1 = physics.data.contact[i_contact].geom1
-            id_geom_2 = physics.data.contact[i_contact].geom2
-            name_geom_1 = physics.model.id2name(id_geom_1, 'geom')
-            name_geom_2 = physics.model.id2name(id_geom_2, 'geom')
-            contact_pair = (name_geom_1, name_geom_2)
-            all_contact_pairs.append(contact_pair)
-
-        touch_right_gripper = (("red_box", "vx300s_right/10_right_gripper_finger") in all_contact_pairs)
-        touch_table =  (("red_box", "table") in all_contact_pairs) 
-
-        not_lift_wrong_object = ("red_box2", "table") in all_contact_pairs
-        touch_wrong_object =  (("red_box2", "vx300s_right/10_right_gripper_finger")) in all_contact_pairs
-
-        reward = 0
-        if touch_right_gripper:
-            reward = 1
-        if not not_lift_wrong_object and touch_wrong_object:
-            reward = 2
-        if touch_right_gripper and (not touch_table): # lifted
-            reward = 4
-        return reward
+        return _stacking_reward(physics)
     
 class TransferMixCubeEvaluateSecond(BimanualViperXTask):
     def __init__(self, random=None):
@@ -406,6 +381,7 @@ class TransferMixCubeEvaluateSecond(BimanualViperXTask):
             np.copyto(physics.data.ctrl, START_ARM_POSE)
             assert BOX_POSE[0] is not None
             physics.named.data.qpos[8:] = BOX_POSE[0]
+            np.copyto(physics.named.model.body_pos['goal_zone'], GOAL_POSE[0])
             # print(f"{BOX_POSE=}")
         super().initialize_episode(physics)
 
@@ -415,30 +391,7 @@ class TransferMixCubeEvaluateSecond(BimanualViperXTask):
         return env_state
 
     def get_reward(self, physics):
-        # return whether left gripper is holding the box
-        all_contact_pairs = []
-        for i_contact in range(physics.data.ncon):
-            id_geom_1 = physics.data.contact[i_contact].geom1
-            id_geom_2 = physics.data.contact[i_contact].geom2
-            name_geom_1 = physics.model.id2name(id_geom_1, 'geom')
-            name_geom_2 = physics.model.id2name(id_geom_2, 'geom')
-            contact_pair = (name_geom_1, name_geom_2)
-            all_contact_pairs.append(contact_pair)
-
-        touch_right_gripper = (("red_box2", "vx300s_right/10_right_gripper_finger"))  in all_contact_pairs 
-        touch_table =  (("red_box2", "table") in all_contact_pairs)
-
-        not_lift_wrong_object = ("red_box", "table") in all_contact_pairs
-        touch_wrong_object =  (("red_box", "vx300s_right/10_right_gripper_finger")) in all_contact_pairs
-
-        reward = 0
-        if touch_right_gripper:
-            reward = 1
-        if not not_lift_wrong_object and touch_wrong_object:
-            reward = 2
-        if touch_right_gripper and (not touch_table): # lifted
-            reward = 4
-        return reward
+        return _stacking_reward(physics)
 
 if __name__ == '__main__':
     print("sim_env.py executed")

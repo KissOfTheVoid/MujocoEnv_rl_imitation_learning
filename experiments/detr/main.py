@@ -7,16 +7,16 @@ import torch
 # from .models import build_ACT_model
 from .models.detr_vae import build
 
-# Device selection with MPS support
-if torch.backends.mps.is_available():
-    DEVICE = torch.device("mps")
-    print("Using Apple MPS device")
-elif torch.cuda.is_available():
-    DEVICE = torch.device("cuda")
-    print("Using CUDA device")
-else:
-    DEVICE = torch.device("cpu")
-    print("Using CPU device")
+
+def get_device():
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")
+
+
+DEVICE = get_device()
 
 import IPython
 e = IPython.embed
@@ -75,6 +75,7 @@ def get_args_parser():
     parser.add_argument('--kl_weight', action='store', type=int, help='KL Weight', required=False)
     parser.add_argument('--chunk_size', action='store', type=int, help='chunk_size', required=False)
     parser.add_argument('--temporal_agg', action='store_true')
+    parser.add_argument('--resume_ckpt', action='store', type=str, required=False, help='resume checkpoint (unused here)')
 
     return parser
 

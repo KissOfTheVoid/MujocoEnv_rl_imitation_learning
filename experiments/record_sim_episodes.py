@@ -4,17 +4,19 @@ import numpy as np
 import argparse
 import matplotlib.pyplot as plt
 import h5py
+import multiprocessing as mp
 
 from constants import PUPPET_GRIPPER_POSITION_NORMALIZE_FN, SIM_TASK_CONFIGS
-from ee_sim_env import make_ee_sim_env
-from sim_env import make_sim_env, BOX_POSE
+from ee_sim_env import make_ee_sim_env, set_goal_zone_pose as set_goal_zone_pose_ee
+from sim_env import make_sim_env, BOX_POSE, set_goal_zone_pose as set_goal_zone_pose_sim
 from scripted_policy import PickTransferCube, PickTransferTorus, PickTransferMixCube
+from utils import sample_goal_zone_pose
 
 import IPython
 e = IPython.embed
 
 
-def main(args):
+def generate_episodes(task_name, dataset_dir, num_episodes, onscreen_render, start_idx=0):
     """
     Generate demonstration data in simulation.
     First rollout the policy (defined in ee space) in ee_sim_env. Obtain the joint trajectory.
@@ -23,10 +25,6 @@ def main(args):
     Save this episode of data, and continue to next episode of data collection.
     """
 
-    task_name = args['task_name']
-    dataset_dir = args['dataset_dir']
-    num_episodes = args['num_episodes']
-    onscreen_render = args['onscreen_render']
     inject_noise = False
     render_cam_name = 'angle'
 
@@ -45,10 +43,15 @@ def main(args):
         raise NotImplementedError
 
     success = []
-    episode_idx = -1
-    while episode_idx < num_episodes:
+    episode_idx = start_idx - 1
+    last_idx = start_idx + num_episodes - 1
+    while episode_idx < last_idx:
         episode_idx += 1
-        print(f'{episode_idx=}')
+        print(f'worker={os.getpid()} episode_idx={episode_idx}')
+        if task_name == 'mix_cube':
+            goal_pose = sample_goal_zone_pose()
+            set_goal_zone_pose_ee(goal_pose)
+            set_goal_zone_pose_sim(goal_pose)
         print('Rollout out EE space scripted policy')
         # setup the environment
         env = make_ee_sim_env(task_name)
@@ -61,8 +64,7 @@ def main(args):
             plt_img = ax.imshow(ts.observation['images'][render_cam_name])
             plt.ion()
         for step in range(episode_len):
-            # print(f"CURRENTY RECORDING FOR type {episode_idx%2}")
-            action = policy(ts, episode_idx%2)
+            action = policy(ts, episode_idx % 2)
             ts = env.step(action)
             episode.append(ts)
             if onscreen_render:
@@ -97,7 +99,6 @@ def main(args):
         print('Replaying joint commands')
         env = make_sim_env(task_name)
         BOX_POSE[0] = subtask_info # make sure the sim_env has the same object configurations as ee_sim_env
-        # print(BOX_POSE)
         ts = env.reset()
 
         episode_replay = [ts]
@@ -127,41 +128,19 @@ def main(args):
 
         plt.close()
 
-        """
-        For each timestep:
-        observations
-        - images
-            - each_cam_name     (480, 640, 3) 'uint8'
-        - qpos                  (14,)         'float64'
-        - qvel                  (14,)         'float64'
-
-        action                  (14,)         'float64'
-        """
-
-        # if 'mix_cube' == task_name:
         data_dict = {
             '/observations/qpos': [],
             '/observations/qvel': [],
             '/action': [],
             '/observations/type': [],
         }
-        # else:
-        #     data_dict = {
-        #         '/observations/qpos': [],
-        #         '/observations/qvel': [],
-        #         '/action': [],
-        #     }
 
         for cam_name in camera_names:
             data_dict[f'/observations/images/{cam_name}'] = []
 
-        # because the replaying, there will be eps_len + 1 actions and eps_len + 2 timesteps
-        # truncate here to be consistent
         joint_traj = joint_traj[:-1]
         episode_replay = episode_replay[:-1]
 
-        # len(joint_traj) i.e. actions: max_timesteps
-        # len(episode_replay) i.e. time steps: max_timesteps + 1
         max_timesteps = len(joint_traj)
         while joint_traj:
             action = joint_traj.pop(0)
@@ -172,13 +151,11 @@ def main(args):
             for cam_name in camera_names:
                 data_dict[f'/observations/images/{cam_name}'].append(ts.observation['images'][cam_name])
             
-            #MINE 
             if 'mix_cube' == task_name:
                 data_dict['/observations/type'].append(episode_idx%2)
             else:
                 data_dict['/observations/type'].append(None)
 
-        # HDF5
         t0 = time.time()
         dataset_path = os.path.join(dataset_dir, f'episode_{episode_idx}')
         with h5py.File(dataset_path + '.hdf5', 'w', rdcc_nbytes=1024 ** 2 * 2) as root:
@@ -188,14 +165,10 @@ def main(args):
             for cam_name in camera_names:
                 _ = image.create_dataset(cam_name, (max_timesteps, 480, 640, 3), dtype='uint8',
                                          chunks=(1, 480, 640, 3), )
-            # compression='gzip',compression_opts=2,)
-            # compression=32001, compression_opts=(0, 0, 0, 0, 9, 1, 1), shuffle=False)
             qpos = obs.create_dataset('qpos', (max_timesteps, 7))
             qvel = obs.create_dataset('qvel', (max_timesteps, 7))
             action = root.create_dataset('action', (max_timesteps, 7))
 
-            # MINE
-            # if 'mix_cube' == task_name:
             TYPE = obs.create_dataset('type', (max_timesteps))
 
             for name, array in data_dict.items():
@@ -211,5 +184,28 @@ if __name__ == '__main__':
     parser.add_argument('--dataset_dir', action='store', type=str, help='dataset saving dir', required=True)
     parser.add_argument('--num_episodes', action='store', type=int, help='num_episodes', required=False)
     parser.add_argument('--onscreen_render', action='store_true')
+    parser.add_argument('--num_workers', action='store', type=int, default=1, help='parallel workers for generation')
+    parser.add_argument('--start_index', action='store', type=int, default=0, help='starting episode index (e.g., 41 to continue)')
     
-    main(vars(parser.parse_args()))
+    args = vars(parser.parse_args())
+    num_workers = max(1, args.get('num_workers', 1))
+    start_index = max(0, args.get('start_index', 0))
+
+    if num_workers == 1:
+        generate_episodes(args['task_name'], args['dataset_dir'], args['num_episodes'], args['onscreen_render'], start_idx=start_index)
+    else:
+        ctx = mp.get_context("spawn")
+        per_worker = args['num_episodes'] // num_workers
+        remainder = args['num_episodes'] % num_workers
+        procs = []
+        start = start_index
+        for wi in range(num_workers):
+            count = per_worker + (1 if wi < remainder else 0)
+            if count == 0:
+                continue
+            p = ctx.Process(target=generate_episodes, args=(args['task_name'], args['dataset_dir'], count, False, start))
+            p.start()
+            procs.append(p)
+            start += count
+        for p in procs:
+            p.join()

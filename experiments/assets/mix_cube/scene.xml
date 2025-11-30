@@ -30,6 +30,27 @@
         <camera name="angle" pos="0 0 0.6" fovy="78" mode="targetbody" target="table"/>
         <camera name="front_close" pos="0 -0.2 0.4" fovy="78" mode="targetbody" target="vx300s_right/camera_focus"/>
 
+        <!-- Целевая зона с бортиками и сеткой -->
+        <body name="goal_zone" pos="0.15 0.75 0.001">
+            <!-- двойные бортики -->
+            <geom name="zone_border_n1" type="box" pos="0 0.05 0.01" size="0.05 0.005 0.01" rgba="1 0.9 0.2 1" contype="0" conaffinity="0"/>
+            <geom name="zone_border_n2" type="box" pos="0 0.06 0.012" size="0.05 0.003 0.012" rgba="1 1 0.6 1" contype="0" conaffinity="0"/>
+            <geom name="zone_border_s1" type="box" pos="0 -0.05 0.01" size="0.05 0.005 0.01" rgba="1 0.9 0.2 1" contype="0" conaffinity="0"/>
+            <geom name="zone_border_s2" type="box" pos="0 -0.06 0.012" size="0.05 0.003 0.012" rgba="1 1 0.6 1" contype="0" conaffinity="0"/>
+            <geom name="zone_border_e1" type="box" pos="0.05 0 0.01" size="0.005 0.05 0.01" rgba="1 0.9 0.2 1" contype="0" conaffinity="0"/>
+            <geom name="zone_border_e2" type="box" pos="0.06 0 0.012" size="0.003 0.05 0.012" rgba="1 1 0.6 1" contype="0" conaffinity="0"/>
+            <geom name="zone_border_w1" type="box" pos="-0.05 0 0.01" size="0.005 0.05 0.01" rgba="1 0.9 0.2 1" contype="0" conaffinity="0"/>
+            <geom name="zone_border_w2" type="box" pos="-0.06 0 0.012" size="0.003 0.05 0.012" rgba="1 1 0.6 1" contype="0" conaffinity="0"/>
+
+            <!-- сетка -->
+            <geom name="zone_grid_x1" type="box" pos="0 0 0.001" size="0.05 0.0015 0.001" rgba="1 1 0 0.5" contype="0" conaffinity="0"/>
+            <geom name="zone_grid_y1" type="box" pos="0 0 0.001" size="0.0015 0.05 0.001" rgba="1 1 1 0.5" contype="0" conaffinity="0"/>
+            <geom name="zone_grid_x2" type="box" pos="0 0.025 0.001" size="0.05 0.0015 0.001" rgba="1 1 0 0.4" contype="0" conaffinity="0"/>
+            <geom name="zone_grid_x3" type="box" pos="0 -0.025 0.001" size="0.05 0.0015 0.001" rgba="1 1 0 0.4" contype="0" conaffinity="0"/>
+            <geom name="zone_grid_y2" type="box" pos="0.025 0 0.001" size="0.0015 0.05 0.001" rgba="1 1 1 0.4" contype="0" conaffinity="0"/>
+            <geom name="zone_grid_y3" type="box" pos="-0.025 0 0.001" size="0.0015 0.05 0.001" rgba="1 1 1 0.4" contype="0" conaffinity="0"/>
+        </body>
+
     </worldbody>
 
 

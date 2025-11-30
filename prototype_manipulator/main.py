@@ -19,6 +19,15 @@ import IPython
 import csv
 e = IPython.embed
 
+
+def get_device():
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    return torch.device("cpu")
+
+
 def main(args):
     # with open("zz_final_aloha/ordered_products.csv") as file:
     #     orders
@@ -32,6 +41,8 @@ def main(args):
     print(orders)
     # exit()
     set_seed(1)
+    device = get_device()
+    print(f'Using device: {device}')
     # command line parameters
     policy_class = 'ACT'
     onscreen_render = True
@@ -115,10 +126,13 @@ def main(args):
     policy_paths = config['ckpt_dir']
 
 
-    policy, pre_process, post_process = initialize_policy(ckpt_name=policy_names, 
-                                                              ckpt_dir=policy_paths, 
-                                                              policy_class=policy_class, 
-                                                              policy_config=policy_config)
+    policy, pre_process, post_process = initialize_policy(
+        ckpt_name=policy_names,
+        ckpt_dir=policy_paths,
+        policy_class=policy_class,
+        policy_config=policy_config,
+        device=device,
+    )
     for o in range(len(orders)):
         # policy, pre_process, post_process = initialize_policy(ckpt_name=policy_names, 
         #                                                       ckpt_dir=policy_paths, 
@@ -126,9 +140,9 @@ def main(args):
         #                                                       policy_config=policy_config)
         ### evaluation loop
         if temporal_agg:
-            all_time_actions = torch.zeros([max_timesteps, max_timesteps+num_queries, state_dim])
+            all_time_actions = torch.zeros([max_timesteps, max_timesteps+num_queries, state_dim], device=device)
 
-        qpos_history = torch.zeros((1, max_timesteps, state_dim))
+        qpos_history = torch.zeros((1, max_timesteps, state_dim), device=device)
         qpos_list = []
         target_qpos_list = []
         rewards = []
@@ -151,14 +165,14 @@ def main(args):
                     image_list.append({'main': obs['image']})
                 qpos_numpy = np.array(obs['qpos'])
                 qpos = pre_process(qpos_numpy)
-                qpos = torch.from_numpy(qpos).float().unsqueeze(0)
+                qpos = torch.from_numpy(qpos).float().unsqueeze(0).to(device)
                 qpos_history[:, t] = qpos
-                curr_image = get_image(ts, camera_names)
+                curr_image = get_image(ts, camera_names, device)
 
                 ### query policy
-                # if config['policy_class'] == "ACT":
+                obj_type = orders[o].to(device)
                 if t % query_frequency == 0:
-                    all_actions = policy(qpos, curr_image, type=orders[o])
+                    all_actions = policy(qpos, curr_image, type=obj_type)
                 if temporal_agg:
                     all_time_actions[[t], t:t+num_queries] = all_actions
                     actions_for_curr_step = all_time_actions[:, t]
@@ -167,7 +181,7 @@ def main(args):
                     k = 0.01
                     exp_weights = np.exp(-k * np.arange(len(actions_for_curr_step)))
                     exp_weights = exp_weights / exp_weights.sum()
-                    exp_weights = torch.from_numpy(exp_weights).unsqueeze(dim=1)
+                    exp_weights = torch.from_numpy(exp_weights).to(device).unsqueeze(dim=1)
                     raw_action = (actions_for_curr_step * exp_weights).sum(dim=0, keepdim=True)
                 else:
                     raw_action = all_actions[:, t % query_frequency]
@@ -242,18 +256,17 @@ def save_videos(video, dt, video_path=None):
         print(f'Saved video to: {video_path}')
 
 
-def get_image(ts, camera_names):
+def get_image(ts, camera_names, device):
     curr_images = []
     for cam_name in camera_names:
         curr_image = rearrange(ts.observation['images'][cam_name], 'h w c -> c h w')
         curr_images.append(curr_image)
     curr_image = np.stack(curr_images, axis=0)
-    curr_image = torch.from_numpy(curr_image / 255.0).float().unsqueeze(0)
+    curr_image = torch.from_numpy(curr_image / 255.0).float().unsqueeze(0).to(device)
     return curr_image
 
 # load policy and stats
-def initialize_policy(ckpt_name, ckpt_dir, policy_class, policy_config):
-
+def initialize_policy(ckpt_name, ckpt_dir, policy_class, policy_config, device):
     stats_path = os.path.join(ckpt_dir, f'dataset_stats.pkl')
     with open(stats_path, 'rb') as f:
         stats = pickle.load(f)
@@ -263,24 +276,14 @@ def initialize_policy(ckpt_name, ckpt_dir, policy_class, policy_config):
 
     ckpt_path = os.path.join(str(ckpt_dir), str(ckpt_name))
     policy = ACTPolicy(policy_config)
-    # Device selection with MPS support
-    if torch.backends.mps.is_available():
-        device = torch.device("mps")
-        print("Using Apple MPS device for loading")
-    elif torch.cuda.is_available():
-        device = torch.device("cuda")
-        print("Using CUDA device for loading")
-    else:
-        device = torch.device("cpu")
-        print("Using CPU device for loading")
     loading_status = policy.load_state_dict(
         torch.load(ckpt_path, map_location=device)['policy_state_dict']
     )
     print(loading_status)
 
-    policy.to(torch.device("cpu"))
+    policy.to(device)
     policy.eval()
-    print(f'Loaded: {ckpt_path}')
+    print(f'Loaded: {ckpt_path} on {device}')
     return policy, pre_process, post_process
 
 if __name__ == '__main__':

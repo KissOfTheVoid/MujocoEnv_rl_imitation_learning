@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import torchvision
 from torch import nn
 from torchvision.models._utils import IntermediateLayerGetter
+from torchvision import models as tv_models
 from typing import Dict, List
 
 from util.misc import NestedTensor, is_main_process
@@ -89,9 +90,17 @@ class Backbone(BackboneBase):
                  train_backbone: bool,
                  return_interm_layers: bool,
                  dilation: bool):
-        backbone = getattr(torchvision.models, name)(
+        weights = None
+        if is_main_process():
+            try:
+                weights_enum = tv_models.get_model_weights(name)
+                weights = weights_enum.DEFAULT
+            except Exception:
+                weights = None
+        backbone = getattr(tv_models, name)(
             replace_stride_with_dilation=[False, False, dilation],
-            pretrained=is_main_process(), norm_layer=FrozenBatchNorm2d) # pretrained # TODO do we want frozen batch_norm??
+            weights=weights,
+            norm_layer=FrozenBatchNorm2d)
         num_channels = 512 if name in ('resnet18', 'resnet34') else 2048
         super().__init__(backbone, train_backbone, num_channels, return_interm_layers)
 

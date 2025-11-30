@@ -47,6 +47,7 @@ ptyprocess==0.7.0
 pure_eval==0.2.3
 Pygments==2.19.1
 PyOpenGL==3.1.9
+PySide6==6.7.3
 pyparsing==3.1.4
 pyquaternion==0.9.9
 python-dateutil==2.9.0.post0

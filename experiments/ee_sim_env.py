@@ -8,13 +8,18 @@ from constants import PUPPET_GRIPPER_POSITION_UNNORMALIZE_FN
 from constants import PUPPET_GRIPPER_POSITION_NORMALIZE_FN
 from constants import PUPPET_GRIPPER_VELOCITY_NORMALIZE_FN
 
-from utils import sample_box_pose
+from utils import sample_box_pose, sample_goal_zone_pose
 from dm_control import mujoco
 from dm_control.rl import control
 from dm_control.suite import base
 
 import IPython
 e = IPython.embed
+GOAL_POSE = [np.array([0.15, 0.75, 0.001])]
+
+
+def set_goal_zone_pose(pose):
+    GOAL_POSE[0] = np.array(pose)
 
 
 def make_ee_sim_env(task_name):
@@ -300,6 +305,7 @@ class TransferMixCube(BimanualViperXEETask):
         box_start_idx = physics.model.name2id('red_box_joint', 'joint')
 
         np.copyto(physics.data.qpos[box_start_idx : box_start_idx + 14], poses)
+        np.copyto(physics.named.model.body_pos['goal_zone'], GOAL_POSE[0])
         # print(f"randomized cube position to {cube_pose}")
 
         super().initialize_episode(physics)
@@ -320,41 +326,16 @@ class TransferMixCube(BimanualViperXEETask):
             contact_pair = (name_geom_1, name_geom_2)
             all_contact_pairs.append(contact_pair)
 
-        # Get cube positions (using body names, not geom names)
-        green_box_pos = physics.named.data.xpos['box']  # Green cube (body name: 'box')
-        red_box_pos = physics.named.data.xpos['box2']  # Red cube (body name: 'box2')
-
-        # Target zone positions (from XML: pos="x y z")
-        green_zone_pos = np.array([0.0, 0.7, 0.025])
-        red_zone_pos = np.array([0.15, 0.7, 0.025])
-
-        # Check if cube is fully inside zone (center + boundaries)
-        # Zone size: 0.05 (half) = 10cm full, Cube size: 0.02 (half) = 4cm full
-        # For cube to fit entirely: center must be within (5cm - 2cm) = 3cm from zone center
-        def is_in_zone(box_pos, zone_pos, threshold=0.03):
-            distance = np.linalg.norm(box_pos[:2] - zone_pos[:2])
-            return distance < threshold
-
         touch_right_gripper = (("red_box", "vx300s_right/10_right_gripper_finger") in all_contact_pairs) \
-                                or (("red_box2", "vx300s_right/10_right_gripper_finger"))  in all_contact_pairs
+                                or (("red_box2", "vx300s_right/10_right_gripper_finger"))  in all_contact_pairs 
+        # touch_right_gripper = (("red_box2", "vx300s_right/10_right_gripper_finger"))  in all_contact_pairs 
         touch_table =  (("red_box", "table") in all_contact_pairs) \
                                  and (("red_box2", "table") in all_contact_pairs)
-
-        green_in_green_zone = is_in_zone(green_box_pos, green_zone_pos)
-        red_in_red_zone = is_in_zone(red_box_pos, red_zone_pos)
+        # touch_table = (("red_box2", "table") in all_contact_pairs)
 
         reward = 0
         if touch_right_gripper:
-            reward = 1  # Touched cube
+            reward = 1
         if touch_right_gripper and (not touch_table): # lifted
-            reward = 2  # Lifted cube
-        # Zone rewards override touch/lift rewards (cube already placed)
-        if green_in_green_zone:
-            reward = 4  # Green in green zone (EQUAL to red!)
-        if red_in_red_zone:
-            reward = 4  # Red in red zone (EQUAL to green!)
-        # Both cubes in zones (only possible in special scenarios)
-        if green_in_green_zone and red_in_red_zone:
-            reward = 8  # BOTH cubes in correct zones!
-
+            reward = 4
         return reward

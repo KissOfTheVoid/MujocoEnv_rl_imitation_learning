@@ -1,0 +1,7 @@
+LICENSE
+README.md
+setup.py
+detr.egg-info/PKG-INFO
+detr.egg-info/SOURCES.txt
+detr.egg-info/dependency_links.txt
+detr.egg-info/top_level.txt

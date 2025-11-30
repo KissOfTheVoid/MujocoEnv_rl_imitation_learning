@@ -2,38 +2,525 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Simple Shop</title>
+    <title>Manipulator Control</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        button { padding: 10px 20px; margin: 5px; }
-        .product { margin-bottom: 10px; }
-        #cart { margin-top: 20px; padding: 10px; border: 1px solid #ccc; }
+        :root {
+            --bg: #0f172a;
+            --panel: #111827;
+            --accent: #22d3ee;
+            --muted: #cbd5e1;
+            --border: #1f2937;
+        }
+        body { font-family: "Inter", "SF Pro Display", system-ui, -apple-system, sans-serif; padding: 24px; margin: 0; background: radial-gradient(circle at 20% 20%, rgba(34,211,238,0.08), transparent 35%), radial-gradient(circle at 80% 10%, rgba(94,234,212,0.08), transparent 35%), var(--bg); color: white; }
+        h2, h3, h4 { margin: 0 0 12px; }
+        button { padding: 10px 16px; margin: 5px 0; cursor: pointer; border: 1px solid var(--border); background: #0ea5e9; color: #0b1222; border-radius: 8px; font-weight: 600; box-shadow: 0 10px 30px rgba(34,211,238,0.2); }
+        button.secondary { background: transparent; color: var(--muted); }
+        .section { margin-bottom: 24px; border: 1px solid var(--border); padding: 16px; border-radius: 12px; background: var(--panel); box-shadow: 0 14px 60px rgba(0,0,0,0.25); }
+        .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        input[type="number"] { width: 90px; padding: 8px 10px; background: #0b1222; border: 1px solid var(--border); border-radius: 8px; color: white; }
+        select { padding: 8px 10px; background: #0b1222; border: 1px solid var(--border); border-radius: 8px; color: white; }
+        .queue-list { list-style: none; padding: 0; margin: 0; }
+        .queue-list li { padding: 6px 0; border-bottom: 1px solid var(--border); color: var(--muted); }
+        .small { color: var(--muted); font-size: 13px; }
+        #sceneContainer { width: 100%; height: 420px; border-radius: 12px; border: 1px solid var(--border); background: #0b1222; overflow: hidden; }
+        .pill { display: inline-block; padding: 6px 10px; border-radius: 20px; background: rgba(34,211,238,0.15); color: #7dd3fc; font-size: 12px; margin-right: 8px; }
     </style>
 </head>
 <body>
-    <h2>Simple Shop</h2>
+    <h2>Управление манипулятором</h2>
 
-    <div id="products"></div>
+        <div class="section">
+            <div class="row" style="justify-content: space-between;">
+                <div>
+                    <h3>3D поле и расстановка объектов</h3>
+                    <div class="small">Выберите тип объекта, кликните по площадке чтобы разместить. Координаты (м) сохраняются в CSV.</div>
+                </div>
+                <div class="pill">Drag / Scroll / Orbit</div>
+            </div>
+            <div class="row">
+                <label for="objectSelect">Объект:</label>
+                <select id="objectSelect"></select>
+                <button onclick="enablePlaceMode()">Разместить объект</button>
+                <button class="secondary" onclick="enableZoneMove()">Переместить целевую зону</button>
+                <button class="secondary" onclick="clearScene()">Очистить сцену</button>
+                <button onclick="exportScene()">Скачать CSV сцены</button>
+            </div>
+            <div id="sceneContainer"></div>
+            <div class="small">CSV формируется сервером (/scene/export). Если очередь действий пустая, обновите/отправьте действия ниже.</div>
+            <div class="small" id="sceneStatus"></div>
+            <div class="small" id="sceneError" style="color:#f87171;"></div>
+        </div>
 
-    <div id="cart">
-        <h3>Your Cart</h3>
-        <ul id="cartItems"></ul>
-        <button onclick="order()">Order and Download CSV</button>
+    <div class="section">
+        <h3>Задание текстом (NLP → действия)</h3>
+        <div class="small">Примеры: "Возьми кубик и положи в зону", "Подними кубик и брось его", "Перенеси кубик в точку 0.4 0.0 0.2".</div>
+        <textarea id="nlpText" rows="3" style="width:100%; background:#0b1222; color:white; border:1px solid var(--border); border-radius:8px; padding:10px;"></textarea>
+        <div class="row">
+            <button onclick="submitNlp()">Запустить задание</button>
+        </div>
+        <div class="small">Алгоритм: текст → последовательность действий (pick → move_to_point → place/throw) с целевой точкой (зона или указанные координаты) → отправка в очередь /actions.</div>
+        <div id="nlpStatus" class="small"></div>
     </div>
 
+    <div class="section">
+        <h3>Визуализация манипулятора (будет обновляться воркером)</h3>
+        <div class="small">Здесь можно выводить gif/mp4 от симуляции. Пока показывает заглушку.</div>
+        <video id="simVideo" controls loop style="width:100%; background:#0b1222; border:1px solid var(--border); border-radius:8px;">
+            <source src="" type="video/mp4">
+        </video>
+        <div class="small" id="videoStatus">Если в /static лежит mp4, он подхватится автоматически.</div>
+    </div>
+
+    <div class="section">
+        <h3>Доступные действия</h3>
+        <div class="row">
+            <label for="actionSelect">Действие:</label>
+            <select id="actionSelect"></select>
+            <span class="small">Для place/throw/move укажите X Y Z (м):</span>
+        </div>
+        <div class="row">
+            <input type="number" step="0.01" id="x" placeholder="X">
+            <input type="number" step="0.01" id="y" placeholder="Y">
+            <input type="number" step="0.01" id="z" placeholder="Z">
+            <button onclick="queueAction()">Отправить в очередь</button>
+        </div>
+        <div class="small">Внутри API: /actions (POST) создаёт задачу, /actions/next (POST) выдаёт следующую для исполнителя.</div>
+    </div>
+
+    <div class="section">
+        <h3>Очередь задач</h3>
+        <ul id="queue" class="queue-list"></ul>
+        <button onclick="refreshQueue()">Обновить</button>
+        <button class="secondary" onclick="clearQueue()">Очистить очередь</button>
+    </div>
+
+    <div class="section">
+        <h3>Товары (CSV совместимость)</h3>
+        <div id="products"></div>
+        <div id="cart">
+            <h4>Корзина</h4>
+            <ul id="cartItems"></ul>
+            <button onclick="order()">Скачать CSV заказа</button>
+        </div>
+    </div>
+
+    <script src="/static/three.min.js"></script>
+    <script src="/static/OrbitControls.js"></script>
     <script>
         const cartItems = [];
+        let actionCatalog = [];
+        let scene, camera, renderer, controls, ground, raycaster, mouse, zoneMesh;
+        const objects = [];
+        let placeMode = true; // включено по умолчанию
+        let sceneReady = false;
+        let dragging = false;
+        let selected = null;
+        let zoneMoveMode = false;
+        const ZONE = { center: [0.3, 0, 0.3], size: 0.15 }; // квадратная целевая зона
+        let latestVideoVersion = null;
+
+        function setSceneStatus(msg) {
+            const el = document.getElementById('sceneStatus');
+            if (el) el.textContent = msg || '';
+        }
+
+        function setSceneError(msg) {
+            const el = document.getElementById('sceneError');
+            if (el) el.textContent = msg || '';
+        }
 
         async function loadProducts() {
             const response = await fetch('/products');
             const products = await response.json();
             const productsDiv = document.getElementById('products');
+            productsDiv.innerHTML = '';
             products.forEach(product => {
                 const button = document.createElement('button');
                 button.textContent = product.product_name;
                 button.onclick = () => addToCart(product.product_id, product.product_name);
                 productsDiv.appendChild(button);
             });
+
+            // populate object selector
+            const objSelect = document.getElementById('objectSelect');
+            objSelect.innerHTML = '';
+            products.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.product_id;
+                opt.textContent = p.product_name;
+                objSelect.appendChild(opt);
+            });
+        }
+
+        async function loadActions() {
+            const response = await fetch('/actions/catalog');
+            actionCatalog = await response.json();
+            const select = document.getElementById('actionSelect');
+            select.innerHTML = '';
+            actionCatalog.forEach(action => {
+                const option = document.createElement('option');
+                option.value = action.action_type;
+                option.textContent = action.label;
+                option.dataset.needsTarget = action.needs_target;
+                select.appendChild(option);
+            });
+        }
+
+        async function queueAction() {
+            const select = document.getElementById('actionSelect');
+            const actionType = select.value;
+            const needsTarget = select.selectedOptions[0].dataset.needsTarget === "true";
+            let target = null;
+            if (needsTarget) {
+                const x = parseFloat(document.getElementById('x').value);
+                const y = parseFloat(document.getElementById('y').value);
+                const z = parseFloat(document.getElementById('z').value);
+                if ([x, y, z].some(v => Number.isNaN(v))) {
+                    alert('Укажите X, Y, Z');
+                    return;
+                }
+                target = [x, y, z];
+            }
+
+            const response = await fetch('/actions', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action_type: actionType, target})
+            });
+
+            if (!response.ok) {
+                const err = await response.json();
+                alert(err.error || 'Не удалось добавить действие');
+                return;
+            }
+            await refreshQueue();
+        }
+
+        async function refreshQueue() {
+            const response = await fetch('/actions/queue');
+            if (!response.ok) return;
+            const queue = await response.json();
+            const ul = document.getElementById('queue');
+            ul.innerHTML = '';
+            queue.forEach((item, idx) => {
+                const li = document.createElement('li');
+                li.textContent = `${idx + 1}. ${item.action_type}` + (item.target ? ` -> [${item.target.join(', ')}]` : '');
+                ul.appendChild(li);
+            });
+        }
+
+        async function clearQueue() {
+            await fetch('/actions/clear', {method: 'POST'});
+            await refreshQueue();
+        }
+
+        // ---- 3D scene ----
+        function initScene() {
+            if (!window.THREE) {
+                setSceneError('Three.js не загрузился');
+                return;
+            }
+            setSceneError('');
+            const container = document.getElementById('sceneContainer');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0b1222);
+
+            camera = new THREE.PerspectiveCamera(45, width / height, 0.01, 100);
+            camera.position.set(0.6, 0.6, 0.6);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(width, height);
+            container.innerHTML = '';
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            // grid and ground
+            const grid = new THREE.GridHelper(1.0, 20, 0x22d3ee, 0x1f2937);
+            scene.add(grid);
+
+            const groundGeo = new THREE.PlaneGeometry(1.0, 1.0);
+            const groundMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, side: THREE.DoubleSide });
+            ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            const light = new THREE.DirectionalLight(0xffffff, 1.0);
+            light.position.set(1, 1, 0.5);
+            scene.add(light);
+            scene.add(new THREE.AmbientLight(0x88a, 0.6));
+
+            // целевая зона (wireframe square)
+            const zoneSize = ZONE.size;
+            const half = zoneSize / 2;
+            const zoneGeom = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(-half, 0.001, -half),
+                new THREE.Vector3(half, 0.001, -half),
+                new THREE.Vector3(half, 0.001, half),
+                new THREE.Vector3(-half, 0.001, half),
+                new THREE.Vector3(-half, 0.001, -half),
+            ]);
+            const zoneMat = new THREE.LineBasicMaterial({ color: 0x22d3ee });
+            zoneMesh = new THREE.Line(zoneGeom, zoneMat);
+            zoneMesh.position.set(ZONE.center[0], 0, ZONE.center[2]);
+            scene.add(zoneMesh);
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            renderer.domElement.addEventListener('click', onSceneClick);
+            renderer.domElement.addEventListener('pointerdown', onPointerDown);
+            renderer.domElement.addEventListener('pointermove', onPointerMove);
+            window.addEventListener('pointerup', onPointerUp);
+            window.addEventListener('resize', onWindowResize);
+            sceneReady = true;
+            setSceneStatus('Сцена готова: нажмите "Разместить объект" и кликните по полю.');
+            animate();
+        }
+
+        function initSceneSafe() {
+            try {
+                initScene();
+            } catch (err) {
+                console.error(err);
+                setSceneError('Ошибка инициализации сцены: ' + err.message);
+            }
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('sceneContainer');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            renderer.setSize(width, height);
+        }
+
+        function enablePlaceMode() {
+            if (!sceneReady) {
+                alert('Сцена ещё не готова');
+                return;
+            }
+            placeMode = true;
+            zoneMoveMode = false;
+            setSceneStatus('Режим: расстановка объектов. Кликните по полю.');
+        }
+
+        function enableZoneMove() {
+            if (!sceneReady) {
+                alert('Сцена ещё не готова');
+                return;
+            }
+            zoneMoveMode = true;
+            placeMode = false;
+            setSceneStatus('Режим: перемещение целевой зоны. Кликните по полю.');
+        }
+
+        function onSceneClick(event) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(ground);
+            if (intersects.length === 0) return;
+
+            const point = intersects[0].point;
+            if (zoneMoveMode) {
+                moveZoneTo(point);
+                zoneMoveMode = false;
+                placeMode = true;
+            } else if (placeMode) {
+                addObjectAt(point);
+                placeMode = true; // оставляем включенным для серийной постановки
+            }
+        }
+
+        function addObjectAt(point) {
+            if (!sceneReady) return;
+            const size = 0.04;
+            const geom = new THREE.BoxGeometry(size, size, size);
+            const color = Math.random() * 0xffffff;
+            const mat = new THREE.MeshStandardMaterial({ color });
+            const mesh = new THREE.Mesh(geom, mat);
+            mesh.position.copy(point);
+            mesh.position.y = size / 2;
+            scene.add(mesh);
+
+            const selectedId = parseInt(document.getElementById('objectSelect').value);
+            objects.push({
+                mesh,
+                product_id: selectedId,
+                position: [mesh.position.x, mesh.position.y, mesh.position.z]
+            });
+        }
+
+        function pickObject(event) {
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(objects.map(o => o.mesh));
+            if (intersects.length > 0) {
+                return objects.find(o => o.mesh === intersects[0].object) || null;
+            }
+            return null;
+        }
+
+        function onPointerDown(event) {
+            const hit = pickObject(event);
+            if (hit) {
+                dragging = true;
+                selected = hit;
+                controls.enabled = false;
+            }
+        }
+
+        function onPointerMove(event) {
+            if (!dragging || !selected) return;
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObject(ground);
+            if (intersects.length === 0) return;
+            const point = intersects[0].point;
+            selected.mesh.position.x = point.x;
+            selected.mesh.position.z = point.z;
+            selected.mesh.position.y = selected.mesh.geometry.parameters.height / 2;
+            selected.position = [selected.mesh.position.x, selected.mesh.position.y, selected.mesh.position.z];
+        }
+
+        function onPointerUp() {
+            dragging = false;
+            selected = null;
+            controls.enabled = true;
+        }
+
+        function clearScene() {
+            if (!sceneReady) return;
+            objects.forEach(o => scene.remove(o.mesh));
+            objects.length = 0;
+        }
+
+        function moveZoneTo(point) {
+            ZONE.center = [point.x, 0, point.z];
+            if (zoneMesh) {
+                zoneMesh.position.set(point.x, 0, point.z);
+            }
+            setSceneStatus(`Целевая зона: x=${point.x.toFixed(2)}, y=${point.z.toFixed(2)} (кликните "Разместить объект" для возврата)`);
+        }
+
+        function parseCoordsFromText(text) {
+            const nums = text.match(/-?\d+(\.\d+)?/g);
+            if (!nums || nums.length < 3) return null;
+            return [parseFloat(nums[0]), parseFloat(nums[1]), parseFloat(nums[2])];
+        }
+
+        function parseIntent(text) {
+            const lower = text.toLowerCase();
+            let action = 'place';
+            if (lower.includes('брос') || lower.includes('throw')) action = 'throw';
+            if (lower.includes('двиг') || lower.includes('поез') || lower.includes('move')) action = 'move_to_point';
+            if (lower.includes('полож') || lower.includes('place')) action = 'place';
+            const coords = parseCoordsFromText(lower);
+            const target = coords || ZONE.center;
+            return { action, target };
+        }
+
+        async function submitNlp() {
+            const text = document.getElementById('nlpText').value || '';
+            if (!text.trim()) {
+                document.getElementById('nlpStatus').textContent = 'Введите задание.';
+                return;
+            }
+            const intent = parseIntent(text);
+            const sequence = [
+                { action_type: 'pick', target: null },
+                { action_type: 'move_to_point', target: intent.target },
+                { action_type: intent.action === 'move_to_point' ? 'place' : intent.action, target: intent.target },
+            ];
+            try {
+                for (const step of sequence) {
+                    const resp = await fetch('/actions', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(step)
+                    });
+                    if (!resp.ok) {
+                        const err = await resp.json();
+                        throw new Error(err.error || 'Не удалось отправить действие');
+                    }
+                }
+                document.getElementById('nlpStatus').textContent = 'Задание отправлено в очередь: ' + sequence.map(s => s.action_type).join(' → ');
+                refreshQueue();
+                await loadLatestVideo();
+            } catch (e) {
+                document.getElementById('nlpStatus').textContent = e.message;
+            }
+        }
+
+        async function loadLatestVideo() {
+            try {
+                const resp = await fetch('/media/latest');
+                if (resp.status === 204) {
+                    document.getElementById('videoStatus').textContent = 'Видео не найдено. Сохраните mp4 в /static/.';
+                    latestVideoVersion = null;
+                    return;
+                }
+                const data = await resp.json();
+                const version = data.updated_at || data.url;
+                if (latestVideoVersion === version) {
+                    return; // уже загружено
+                }
+                latestVideoVersion = version;
+                const video = document.getElementById('simVideo');
+                const url = data.url + '?t=' + Date.now(); // bypass cache
+                video.src = url;
+                video.load();
+                document.getElementById('videoStatus').textContent = 'Загружено видео: ' + data.url;
+            } catch (e) {
+                document.getElementById('videoStatus').textContent = 'Не удалось загрузить видео.';
+            }
+        }
+
+        async function exportScene() {
+            if (objects.length === 0) {
+                alert('Нет объектов для экспорта');
+                return;
+            }
+            const placements = objects.map(o => ({
+                product_id: o.product_id,
+                position: o.position
+            }));
+            const response = await fetch('/scene/export', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({placements})
+            });
+            if (!response.ok) {
+                const err = await response.json();
+                alert(err.error || 'Не удалось экспортировать сцену');
+                return;
+            }
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'scene_placements.csv';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
         }
 
         async function addToCart(product_id, product_name) {
@@ -78,8 +565,16 @@
             }
         }
 
-        // Initialize product loading
-        loadProducts();
+        // Initialize
+        window.addEventListener('DOMContentLoaded', async () => {
+            await loadProducts();
+            await loadActions();
+            await refreshQueue();
+            initSceneSafe();
+            await loadLatestVideo();
+            setInterval(refreshQueue, 3000);
+            setInterval(loadLatestVideo, 5000);
+        });
     </script>
 </body>
 </html>
